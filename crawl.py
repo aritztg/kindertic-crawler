@@ -1,3 +1,5 @@
+import re
+
 from datetime import datetime
 from os import getenv, makedirs, path
 from urllib.parse import parse_qs
@@ -5,6 +7,7 @@ from urllib.parse import parse_qs
 from dotenv import load_dotenv
 from requests import Session
 from selectolax.parser import HTMLParser
+from slugify import slugify
 from zenlog import log
 
 
@@ -20,10 +23,13 @@ IMG_PATH = '/imatge.php?id='
 
 # This is shamelessly hardcoded, I'm a bit lazy today.
 PAGES = {
-    'travellers_book': ('/control/index.php?pagina=llra&tip=1&curs=820&id=6025', '/control/index.php?pagina=llra&tip=2&curs=665&id=4712'),
+    'travellers_book': ('/control/index.php?pagina=llra&tip=1&curs=820&id=6025', '/control/index.php?pagina=llra&tip=1&curs=665&id=4712'),
     'class_diaries': ('/control/index.php?pagina=llra&tip=2&curs=820&id=6025', '/control/index.php?pagina=llra&tip=2&curs=665&id=4712'),
 }
 
+KNOWN_NAMES = ('ares', 'amaya', 'biel', 'tiavana', 'leo', 'mario', 'víctor', 'elisenda', 'greta', 'domenech', 'ferreira', 'einstein', 'pablo',
+               'thiago', 'carlota', 'ferran', 'julia', 'juliet', 'inventors', 'inventores', 'heura', 'ariadna', 'guille', 'noa', 'pintores', 'pintors',
+               'f.', 'd.', 'camila', 'nit', 'feliz', 'víctor', 'guillem', 'víctor', 'leonardo', 'victor')
 
 class KinderTicCrawler:
 
@@ -59,9 +65,10 @@ class KinderTicCrawler:
                 table = root.css_first('table.taula')
                 for tr in table.css('tr'):
                     if tds := tr.css('td'):
+                        title = self.clean_title(tds[1].text().strip())
                         out.append({'type': path_type,
                                     'dt': datetime.strptime(tds[0].text(), '%d/%m/%Y'),
-                                    'title': tds[1].text().strip().title(),
+                                    'title': title,
                                     'link': tds[1].css_first('a').attributes['href']})
 
         return out
@@ -90,7 +97,7 @@ class KinderTicCrawler:
                 f.write(item_folder + '\n\n' + description.text())
 
             # Download all pictures in highest possible res.
-            for i, image in enumerate(root.css('div.imatges img')):
+            for i, image in enumerate(root.css('div.imatges img'), start=1):
                 params = parse_qs(image.attributes['src'].split('?')[1])
                 image_id = params['id'][0]
                 img_url = KT_URL + IMG_PATH + image_id
@@ -102,6 +109,29 @@ class KinderTicCrawler:
                 with open(image_path, 'wb') as f:
                     log.warning(f'Downloading {img_url} to {image_name}...')
                     f.write(self.session.get(img_url).content)
+
+    @staticmethod
+    def clean_title(str_in):
+        title = str_in.lower().capitalize()
+        title = title.replace('´', "'").replace('’', "'")
+        title = title.replace('í', 'í')
+        title = title.replace('/', '-')
+
+        parts = title.split(' - ')
+        parts = [p.capitalize() for p in parts]
+        title = ' - '.join(parts)
+
+        words = re.findall(r"[\w']+", title)
+        slug_words = slugify(title)
+        for name in KNOWN_NAMES:
+            if name not in words and name not in slug_words:
+                continue
+
+            title = title.replace(name, name.title())
+
+        # Hardcoded fixes, again I'm lazy today.
+        title = title.replace('d.', 'D.').replace('f.', 'F.')
+        return title
 
 
 if __name__ == '__main__':
