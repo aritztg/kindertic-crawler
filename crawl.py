@@ -93,7 +93,7 @@ class KinderTicCrawler:
             # Write description file.
             description = root.css_first('div.descripcio')
             description_path = path.join(destination_path, 'description.txt')
-            with open(description_path, 'a') as f:
+            with open(description_path, 'w') as f:
                 f.write(item_folder + '\n\n' + description.text())
 
             # Download all pictures in highest possible res.
